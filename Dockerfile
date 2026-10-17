@@ -16,7 +16,9 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     SB_TRANSPORT=http \
     SB_STORAGE=s3 \
-    SB_AUTH=google
+    SB_AUTH=google \
+    FASTMCP_SHOW_SERVER_BANNER=false \
+    FASTMCP_CHECK_FOR_UPDATES=off
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s CMD python -c "import urllib.request,os;urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"SB_PORT\",\"8000\")}/health')"
 CMD ["second-brain-mcp"]

@@ -340,9 +340,10 @@ def main() -> None:
     settings = Settings()
     server = build_server(settings)
     if settings.transport == "http":
-        server.run(transport="http", host=settings.host, port=settings.port)
+        # No banner: it also triggers a PyPI update check on every start.
+        server.run(transport="http", host=settings.host, port=settings.port, show_banner=False)
     else:
-        server.run()
+        server.run(show_banner=False)
 
 
 if __name__ == "__main__":

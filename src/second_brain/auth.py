@@ -3,8 +3,10 @@ enforced on every MCP request (not just at login)."""
 
 from __future__ import annotations
 
+import hashlib
 import logging
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from fastmcp.exceptions import AuthorizationError
 from fastmcp.server.dependencies import get_access_token
@@ -12,7 +14,48 @@ from fastmcp.server.middleware import Middleware, MiddlewareContext
 
 from .config import Settings
 
+if TYPE_CHECKING:
+    from key_value.aio.protocols import AsyncKeyValue
+
 log = logging.getLogger("second_brain.auth")
+
+STORAGE_KEY_SALT = "second-brain-oauth-storage"
+
+
+def build_client_storage(settings: Settings) -> AsyncKeyValue | None:
+    """Fernet-encrypted file store for the OAuth proxy's state, under SB_OAUTH_STORAGE_DIR.
+
+    Returns None when no directory is configured, so FastMCP falls back to its own
+    (ephemeral, in-container) store. The subdirectory is named after a fingerprint of the
+    encryption key, so rotating the key starts from a clean store instead of failing to decrypt.
+    """
+    if not settings.oauth_storage_dir:
+        return None
+    from cryptography.fernet import Fernet
+    from fastmcp.server.auth.jwt_issuer import derive_jwt_key
+    from key_value.aio.stores.filetree import (
+        FileTreeStore,
+        FileTreeV1CollectionSanitizationStrategy,
+        FileTreeV1KeySanitizationStrategy,
+    )
+    from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
+
+    secret = settings.oauth_storage_key or settings.jwt_signing_key
+    assert secret, "SB_OAUTH_STORAGE_KEY or SB_JWT_SIGNING_KEY is required for SB_OAUTH_STORAGE_DIR"
+    key = derive_jwt_key(high_entropy_material=secret.get_secret_value(), salt=STORAGE_KEY_SALT)
+    directory = Path(settings.oauth_storage_dir).expanduser() / hashlib.sha256(key).hexdigest()[:12]
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+    except PermissionError as e:
+        raise RuntimeError(f"SB_OAUTH_STORAGE_DIR is not writable: {settings.oauth_storage_dir}") from e
+    store = FileTreeStore(
+        data_directory=directory,
+        key_sanitization_strategy=FileTreeV1KeySanitizationStrategy(directory),
+        collection_sanitization_strategy=FileTreeV1CollectionSanitizationStrategy(directory),
+    )
+    log.info("OAuth state persisted under %s", settings.oauth_storage_dir)
+    # A value that won't decrypt (e.g. after a key change) is a cache miss: the client re-registers.
+    return FernetEncryptionWrapper(key_value=store, fernet=Fernet(key=key), raise_on_decryption_error=False)
 
 
 def build_auth_provider(settings: Settings):
@@ -29,6 +72,7 @@ def build_auth_provider(settings: Settings):
         base_url=settings.base_url,
         required_scopes=["openid", "email"],
         jwt_signing_key=settings.jwt_signing_key.get_secret_value(),
+        client_storage=build_client_storage(settings),
         # Claude.ai and Claude Code callback URLs; loopback ports for local clients.
         allowed_client_redirect_uris=[
             "https://claude.ai/api/mcp/auth_callback",

@@ -2,6 +2,20 @@
 
 Creates a private, encrypted, versioned S3 bucket for the vault, a KMS key, a least-privilege IAM user for the server, and CloudTrail auditing.
 
+## 0. Permissions for the Terraform operator
+The identity that runs Terraform needs S3 and IAM permissions, plus KMS (for the key and its policy) and CloudTrail (for the audit trail). If it isn't a full admin, attach [`infra/terraform/bootstrap-admin-policy.json`](../infra/terraform/bootstrap-admin-policy.json) for the KMS and CloudTrail part.
+
+Attach it to a **group** as a managed policy. Inline user policies share a 2,048-byte limit per user, and this policy plus the S3/IAM statements goes over it. Managed policies can be up to 6,144 bytes.
+
+```bash
+aws iam create-policy --policy-name second-brain-terraform-bootstrap \
+  --policy-document file://infra/terraform/bootstrap-admin-policy.json
+aws iam create-group --group-name second-brain-terraform
+aws iam attach-group-policy --group-name second-brain-terraform \
+  --policy-arn arn:aws:iam::<account>:policy/second-brain-terraform-bootstrap
+aws iam add-user-to-group --group-name second-brain-terraform --user-name <your-terraform-user>
+```
+
 ## 1. Apply Terraform
 ```bash
 cd infra/terraform

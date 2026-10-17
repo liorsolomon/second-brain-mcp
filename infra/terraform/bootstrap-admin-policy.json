@@ -1,0 +1,27 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ManageKms",
+      "Effect": "Allow",
+      "Action": [
+        "kms:CreateKey", "kms:TagResource", "kms:UntagResource", "kms:PutKeyPolicy", "kms:GetKeyPolicy",
+        "kms:DescribeKey", "kms:ListResourceTags", "kms:EnableKeyRotation", "kms:GetKeyRotationStatus",
+        "kms:ScheduleKeyDeletion", "kms:CancelKeyDeletion", "kms:CreateAlias", "kms:DeleteAlias",
+        "kms:UpdateAlias", "kms:ListAliases", "kms:Encrypt", "kms:Decrypt", "kms:GenerateDataKey"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ManageTrail",
+      "Effect": "Allow",
+      "Action": [
+        "cloudtrail:CreateTrail", "cloudtrail:DeleteTrail", "cloudtrail:UpdateTrail", "cloudtrail:GetTrail",
+        "cloudtrail:DescribeTrails", "cloudtrail:GetTrailStatus", "cloudtrail:StartLogging",
+        "cloudtrail:StopLogging", "cloudtrail:PutEventSelectors", "cloudtrail:GetEventSelectors",
+        "cloudtrail:AddTags", "cloudtrail:RemoveTags", "cloudtrail:ListTags"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
