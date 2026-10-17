@@ -15,6 +15,12 @@ variable "prefix" {
   default     = ""
 }
 
+variable "obsidian_sync" {
+  description = "Create a separate IAM user (and bucket CORS rules) for syncing the vault to Obsidian with the Remotely Save plugin"
+  type        = bool
+  default     = true
+}
+
 variable "admin_principal_arns" {
   description = <<-EOT
     IAM principals (besides the server) allowed into the bucket and allowed to delete versions.

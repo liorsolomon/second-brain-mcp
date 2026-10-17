@@ -10,7 +10,7 @@ Use GitHub's **private vulnerability reporting** (Security tab → "Report a vul
 - **No hard deletes:** there's no delete tool; `archive` moves notes to `Archive/`. On S3, bucket versioning keeps every version, and the bucket policy stops the server from deleting versions.
 - **Paths:** every path is normalized and checked to stay inside the vault. Hidden folders (`.git`, `.obsidian`) can't be reached.
 - **S3** (see `infra/terraform`): all public access blocked; SSE-KMS with a customer-managed key; non-TLS requests refused; access denied to every principal except the server and named admins; CloudTrail data events on every read and write.
-- **Server credentials:** a dedicated IAM user limited to one bucket and one key. Its access key is created outside Terraform, so it never appears in state.
+- **Credentials:** the server and Obsidian sync each get their own IAM user, limited to one bucket and one key, so either can be revoked alone. Neither can delete object versions. Access keys are created outside Terraform, so they never appear in state.
 - **Prompt injection:** note contents are returned as data. The server tells clients not to follow instructions found in notes, and no tool can destroy data.
 - **Logs** record tool and method names, never note contents.
 

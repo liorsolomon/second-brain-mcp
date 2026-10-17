@@ -19,12 +19,13 @@ provider "aws" {
 data "aws_caller_identity" "me" {}
 
 locals {
-  account_id   = data.aws_caller_identity.me.account_id
-  bucket_arn   = "arn:aws:s3:::${var.bucket_name}"
-  object_arn   = "arn:aws:s3:::${var.bucket_name}/${var.prefix}*"
-  admin_arns   = concat(var.admin_principal_arns, ["arn:aws:iam::${local.account_id}:root"])
-  server_arn   = aws_iam_user.server.arn
-  allowed_arns = concat(local.admin_arns, [local.server_arn])
+  account_id    = data.aws_caller_identity.me.account_id
+  bucket_arn    = "arn:aws:s3:::${var.bucket_name}"
+  object_arn    = "arn:aws:s3:::${var.bucket_name}/${var.prefix}*"
+  admin_arns    = concat(var.admin_principal_arns, ["arn:aws:iam::${local.account_id}:root"])
+  server_arn    = aws_iam_user.server.arn
+  obsidian_arns = var.obsidian_sync ? [aws_iam_user.obsidian[0].arn] : []
+  allowed_arns  = concat(local.admin_arns, [local.server_arn], local.obsidian_arns)
 }
 
 # ---------------------------------------------------------------- KMS
@@ -177,6 +178,60 @@ resource "aws_iam_user_policy" "server" {
 
 # The access key is created outside Terraform (aws iam create-access-key) so the
 # secret never lands in Terraform state. See docs/aws-setup.md.
+
+# ---------------------------------------------------------------- Obsidian sync identity
+
+# A separate user for the Remotely Save plugin on your devices. Same note access as the
+# server, but its key lives on laptops and phones, so it can be revoked on its own.
+# It cannot delete object versions (ProtectHistory in the bucket policy).
+resource "aws_iam_user" "obsidian" {
+  count = var.obsidian_sync ? 1 : 0
+  name  = "second-brain-obsidian"
+}
+
+resource "aws_iam_user_policy" "obsidian" {
+  count = var.obsidian_sync ? 1 : 0
+  name  = "second-brain-obsidian-sync"
+  user  = aws_iam_user.obsidian[0].name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "ListVault"
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket", "s3:GetBucketLocation"]
+        Resource = local.bucket_arn
+      },
+      {
+        Sid      = "SyncNotes"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"]
+        Resource = local.object_arn
+      },
+      {
+        Sid      = "UseVaultKey"
+        Effect   = "Allow"
+        Action   = ["kms:Encrypt", "kms:Decrypt", "kms:GenerateDataKey"]
+        Resource = aws_kms_key.vault.arn
+      },
+    ]
+  })
+}
+
+# Obsidian mobile (and desktop without the plugin's CORS bypass) calls S3 from an app
+# origin, so the bucket must allow those origins. CORS doesn't grant access: every
+# request still has to be signed by an allowed IAM user.
+resource "aws_s3_bucket_cors_configuration" "vault" {
+  count  = var.obsidian_sync ? 1 : 0
+  bucket = aws_s3_bucket.vault.id
+  cors_rule {
+    allowed_origins = ["app://obsidian.md", "capacitor://localhost", "http://localhost"]
+    allowed_methods = ["GET", "PUT", "POST", "DELETE", "HEAD"]
+    allowed_headers = ["*"]
+    expose_headers  = ["ETag", "Content-Length", "Last-Modified", "x-amz-version-id"]
+    max_age_seconds = 3600
+  }
+}
 
 # ---------------------------------------------------------------- Audit
 
