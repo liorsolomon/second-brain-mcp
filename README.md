@@ -49,11 +49,12 @@ claude mcp add second-brain -e SB_VAULT_PATH="$PWD/examples/vault" -- uv --direc
 1. [AWS setup](docs/aws-setup.md): Terraform for the bucket, KMS key, least-privilege IAM user and CloudTrail
 2. [Deploy to Railway and connect Claude](docs/deploy-and-connect.md)
 3. [Sync Obsidian with the S3 vault](docs/obsidian-sync.md) (Remotely Save, desktop and mobile)
+4. [Make every Claude use it](docs/always-on.md): read the vault at the start of every chat and log new topics as they come up, on every device
 
 ## Roadmap
 - [x] Activity stats: what occupies your time, as aggregates Claude can chart
 - [ ] Semantic search: heading-level chunks, pgvector + full-text, merged by rank, with frontmatter filters
-- [ ] `/brain` Claude Code skill for the session routine
+- [ ] `/brain` skill and MCP prompts for the session routine, weekly review and retrospectives (see [always-on.md](docs/always-on.md#5-optional-a-skill-for-the-playbook))
 - [ ] Persistent OAuth client storage (survives restarts)
 - [ ] Optional field-level encryption for contact details
 

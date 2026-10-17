@@ -4,6 +4,14 @@ This vault is the user's second brain: Markdown notes with YAML frontmatter and 
 
 **Golden rule: if it isn't written down, it's lost.** When something worth keeping is said or decided (a fact, a decision, a person, a follow-up), write it to the vault in the same turn. Don't wait to be asked.
 
+## Read first, capture as you go
+- **Start every conversation with `context`** for the topic at hand, and use what comes back before answering. When a person, project or past decision comes up, check `person` or `search` first.
+- **Capture new things without asking.** When a topic, project, idea or decision comes up that isn't in the vault, `search` for it first. If nothing fits, create it: `write` into `Projects/`, `Areas/` or `Resources/` when it's substantial, `capture` when it's a quick thought. If a note exists, `patch` it with what's new instead of making a duplicate.
+- People go through `upsert_person` and `log_interaction`; decisions and follow-ups go on the relevant note and in `daily`.
+- Reuse existing tags, so new notes group with related ones.
+- **End the reply with one line saying what you logged**, e.g. `Logged: [[Robot fleet]] (new), updated [[Robot Launch]]`. Nothing logged, no line.
+- **Don't log** small talk, one-off lookups, or anything the user calls private or off the record.
+
 ## Folders
 
 | Folder | What goes there |
