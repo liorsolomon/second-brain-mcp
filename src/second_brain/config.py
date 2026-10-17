@@ -58,13 +58,22 @@ class Settings(BaseSettings):
     # Store the text of `search` queries. Off by default: queries can be more revealing than note paths.
     stats_log_queries: bool = False
 
-    @field_validator("allowed_emails", "extra_redirect_uris", mode="before")
+    @field_validator("allowed_emails", mode="before")
     @classmethod
-    def _split_csv(cls, v: object) -> object:
+    def _split_emails(cls, v: object) -> object:
         if isinstance(v, str):
-            return [item.strip().lower() if item.strip().count("@") else item.strip() for item in v.split(",") if item.strip()]
+            return [e.strip().lower() for e in v.split(",") if e.strip()]
         if isinstance(v, list):
-            return [str(item).strip().lower() if str(item).strip().count("@") else str(item).strip() for item in v]
+            return [str(e).strip().lower() for e in v]
+        return v
+
+    @field_validator("extra_redirect_uris", mode="before")
+    @classmethod
+    def _split_redirect_uris(cls, v: object) -> object:
+        if isinstance(v, str):
+            return [uri.strip() for uri in v.split(",") if uri.strip()]
+        if isinstance(v, list):
+            return [str(uri).strip() for uri in v if str(uri).strip()]
         return v
 
     @model_validator(mode="after")
