@@ -1,4 +1,4 @@
-# Deploy to Railway and connect Claude
+# Deploy to Railway and connect MCP clients
 
 ## 1. Google OAuth client
 In Google Cloud Console, go to **APIs & Services → Credentials → Create OAuth client ID → Web application**.
@@ -23,6 +23,13 @@ Optional, for persistent logins (see [Keep logins across redeploys](#keep-logins
 |---|---|
 | `SB_OAUTH_STORAGE_DIR` | the volume mount path, e.g. `/data/oauth` |
 | `SB_OAUTH_STORAGE_KEY` | optional; encrypts the OAuth state. Defaults to a key derived from `SB_JWT_SIGNING_KEY` |
+
+Optional, for ChatGPT connector callbacks:
+
+| Variable | Value |
+|---|---|
+| `SB_EXTRA_REDIRECT_URIS` | Comma-separated OAuth redirect URI patterns. Add only the callback URI or patterns shown for your ChatGPT connector. See [Connect ChatGPT](#connect-chatgpt). |
+| `SB_ALLOW_DYNAMIC_CLIENT_REGISTRATION` | Leave unset or `false` initially. Set to `true` only if ChatGPT cannot connect using CIMD and requires DCR. See the registration note below. |
 
 Optional, for activity stats (see [Activity stats](#activity-stats)):
 
@@ -52,7 +59,7 @@ Notes:
 **Check that it works:** sign in from Claude Code (`/mcp`) and call a tool, such as `health`. Then trigger a redeploy (`railway redeploy`, or push a commit) and wait for `/health` to return ok. Call the tool again. It should work without a browser window opening. In the deploy logs, look for `OAuth state persisted under /data/oauth` at startup.
 
 ### Activity stats
-The `activity` tool shows what has occupied your time (topics, notes, people, projects) from the tool calls Claude makes. It needs a Postgres database; without one the server logs a warning and runs without it.
+The `activity` tool shows what has occupied your time (topics, notes, people, projects) from the tool calls clients make. It needs a Postgres database; without one the server logs a warning and runs without it.
 
 1. Add a database to the project: `railway add --database postgres` (or **+ New → Database → PostgreSQL** in the dashboard).
 2. In the `second-brain-mcp` service, add the variable `DATABASE_URL` with the value `${{Postgres.DATABASE_URL}}`. That reference resolves to the private-network address (`postgres.railway.internal`), so traffic never leaves Railway's network. Don't enable a public TCP proxy on the database.
@@ -68,7 +75,19 @@ To turn stats off, set `SB_STATS=off`. What gets stored, and what never does, is
   ```
   Then run `/mcp` in Claude Code to sign in.
 
-## 4. Obsidian on your laptops and phone
+## 4. Connect ChatGPT
+
+1. In ChatGPT web settings, enable Developer mode if it is available for your plan/workspace. Add a custom connector named **Second Brain**, using `https://<your-railway-domain>/mcp` and OAuth authentication.
+2. In the connector setup flow, note the exact redirect URI ChatGPT displays. OpenAI currently uses either a callback-ID URI such as `https://chatgpt.com/connector/oauth/<callback_id>` or the stable URI `https://chatgpt.com/connector_platform_oauth_redirect`, depending on the authorization server's metadata and callback mode. Allow the URI shown for your connector.
+3. In Railway, set `SB_EXTRA_REDIRECT_URIS` to that URI. For a callback-ID URI, use the supported wildcard form `https://chatgpt.com/connector/oauth/*`; for the stable callback, use the exact URI `https://chatgpt.com/connector_platform_oauth_redirect`. If ChatGPT shows another callback, use its exact value. Redeploy after changing the variable.
+4. Complete Google sign-in with an address included in `SB_ALLOWED_EMAILS`.
+5. In a chat, enable the **Second Brain** connector and call `health` to verify the connection. For example: “Call health on Second Brain.” ChatGPT may ask for approval before invoking tools that write to the vault.
+
+ChatGPT supports Client ID Metadata Documents (CIMD), which this server leaves available while dynamic client registration is disabled. Try connecting with that default first. If ChatGPT reports that the authorization server requires dynamic client registration, set `SB_ALLOW_DYNAMIC_CLIENT_REGISTRATION=true` and redeploy. This exposes the registration endpoint to unauthenticated clients, who can create OAuth client records even though they still cannot access the vault without an allowlisted Google login. Keep the Google email allowlist enabled and turn DCR off again if it is not needed.
+
+To encourage use of the context tool, you can add a ChatGPT custom instruction such as: “At the start of a conversation about a topic relevant to my Second Brain, call the Second Brain `context` tool with that topic before answering. Log new topics, decisions, and people when relevant.” ChatGPT may not call tools automatically, so invoke `context` directly when needed.
+
+## 5. Obsidian on your laptops and phone
 Sync Obsidian with the same bucket using the **Remotely Save** plugin and the dedicated `second-brain-obsidian` IAM user. See [obsidian-sync.md](obsidian-sync.md).
 
 ## Running locally (stdio)
