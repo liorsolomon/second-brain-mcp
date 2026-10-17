@@ -10,8 +10,10 @@ RUN uv sync --frozen --no-dev
 FROM python:3.12-slim
 RUN useradd --create-home --uid 10001 brain
 WORKDIR /app
-COPY --from=build --chown=brain:brain /app /app
-USER brain
+# Code stays root-owned (read-only to the server). No USER line: the entrypoint
+# starts as root to prepare the volume, then drops to `brain` before the server runs.
+COPY --from=build /app /app
+COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     SB_TRANSPORT=http \
@@ -21,4 +23,5 @@ ENV PATH="/app/.venv/bin:$PATH" \
     FASTMCP_CHECK_FOR_UPDATES=off
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s CMD python -c "import urllib.request,os;urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"SB_PORT\",\"8000\")}/health')"
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["second-brain-mcp"]
