@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# Secrets and local config — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Terraform: state and local vars hold account details
+infra/terraform/.terraform/
+infra/terraform/*.tfstate*
+infra/terraform/*.tfvars
+!infra/terraform/terraform.tfvars.example
+infra/terraform/backend.tf
+infra/terraform/.terraform.lock.hcl
+
+# Real vaults must never be committed. Only examples/vault (fictional) is tracked.
+/vault/
+/vaults/
+*.vault/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/

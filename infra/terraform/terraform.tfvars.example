@@ -1,0 +1,5 @@
+region      = "us-east-1"
+bucket_name = "my-second-brain-vault-CHANGE-ME"
+prefix      = ""
+# Must include the identity you run Terraform as (aws sts get-caller-identity).
+admin_principal_arns = ["arn:aws:iam::123456789012:user/CHANGE-ME"]
