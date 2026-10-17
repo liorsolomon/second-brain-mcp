@@ -17,7 +17,31 @@ Create a service from this repo. It uses the `Dockerfile` and `railway.toml`. Se
 | `SB_S3_BUCKET`, `SB_S3_REGION` | from Terraform |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | from `docs/aws-setup.md` step 2 |
 
+Optional, for persistent logins (see [Keep logins across redeploys](#keep-logins-across-redeploys)):
+
+| Variable | Value |
+|---|---|
+| `SB_OAUTH_STORAGE_DIR` | the volume mount path, e.g. `/data/oauth` |
+| `SB_OAUTH_STORAGE_KEY` | optional; encrypts the OAuth state. Defaults to a key derived from `SB_JWT_SIGNING_KEY` |
+| `RAILWAY_RUN_UID` | `0`, so the container can write to the root-owned volume |
+
 Check that the deploy is up: `curl https://<domain>/health` should return `{"status":"ok"}`, and any request to `/mcp` without a login should get a 401.
+
+### Keep logins across redeploys
+The OAuth proxy keeps registered clients and tokens on disk. By default that disk is the container's own filesystem, so every redeploy wipes it and each client (Claude Code, Claude.ai) has to go through consent and Google sign-in again. To keep that state, put it on a Railway volume:
+
+1. In the Railway service, **right-click the canvas → Volume**, attach it to `second-brain-mcp`, and set the mount path to `/data`.
+2. Set `SB_OAUTH_STORAGE_DIR=/data/oauth`.
+3. Set `RAILWAY_RUN_UID=0`. Railway mounts volumes owned by root and the image runs as an unprivileged user, so without this the server can't write the volume. It fails at startup with `SB_OAUTH_STORAGE_DIR is not writable` instead of silently falling back.
+4. Redeploy and sign in once from each client.
+
+The state is encrypted at rest with Fernet. The key comes from `SB_OAUTH_STORAGE_KEY` if it's set, otherwise it's derived from `SB_JWT_SIGNING_KEY`. If you change that key, or `SB_JWT_SIGNING_KEY`, the old entries can no longer be read. They're ignored rather than causing errors, and every client signs in once more. Changing `SB_JWT_SIGNING_KEY` also invalidates issued tokens.
+
+Notes:
+- A service with a volume can only run one replica, and Railway stops the old deployment before it starts the new one, so expect a few seconds of downtime on each deploy.
+- The volume only holds OAuth client registrations and tokens. The vault itself stays in S3.
+
+**Check that it works:** sign in from Claude Code (`/mcp`) and call a tool, such as `health`. Then trigger a redeploy (`railway redeploy`, or push a commit) and wait for `/health` to return ok. Call the tool again. It should work without a browser window opening. In the deploy logs, look for `OAuth state persisted under /data/oauth` at startup.
 
 ## 3. Connect Claude
 - **Claude.ai** (web, desktop, mobile): Settings → Connectors → **Add custom connector** → URL `https://<domain>/mcp`. Sign in with your allowlisted Google account.

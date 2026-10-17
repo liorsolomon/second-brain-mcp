@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     google_client_id: str | None = None
     google_client_secret: SecretStr | None = None
     jwt_signing_key: SecretStr | None = None
+    # Persistent OAuth state (client registrations, tokens). Point this at a mounted volume so
+    # logins survive redeploys. Unset = FastMCP's default, a directory inside the container.
+    oauth_storage_dir: str | None = None
+    # Encrypts the OAuth state at rest. Unset = derived from SB_JWT_SIGNING_KEY.
+    oauth_storage_key: SecretStr | None = None
     # NoDecode: read the env var as a comma-separated string, not JSON.
     allowed_emails: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
