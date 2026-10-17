@@ -19,6 +19,7 @@ from .auth import AllowlistMiddleware, build_auth_provider
 from .config import Settings
 from .logs import uvicorn_log_config
 from .people import People
+from .prompts import retrospective_prompt
 from .stats import Focus, GroupBy, StatsMiddleware, StatsStore, aggregate, build_recorder, parse_period
 from .storage import LocalStorage, S3Storage, StorageError, clean_path
 from .vault import FOLDERS, Vault, VaultError, wikilink
@@ -364,8 +365,10 @@ def build_server(settings: Settings | None = None, vault: Vault | None = None) -
             focus: Annotated[Focus, Field(description="Which rankings to include")] = "all",
         ) -> dict[str, Any]:
             """What has occupied the user's time: aggregates of their vault activity over a period, with a
-            time series, top topics/notes/people/projects (trend vs the previous equal period), new notes,
-            interactions by person, and things that went quiet. Use for retrospectives and charts."""
+            time series (each bucket's `by_topic` splits its score across `series_topics` + other/untagged,
+            ready for a stacked chart), top topics/notes/people/projects (trend vs the previous equal
+            period), new notes, interactions by person, and things that went quiet. Use for retrospectives
+            and charts; the `retrospective` prompt describes a full visual report."""
             try:
                 days = parse_period(period)
             except ValueError as e:
@@ -378,6 +381,18 @@ def build_server(settings: Settings | None = None, vault: Vault | None = None) -
                 log.warning("activity: query failed (%s)", type(e).__name__)
                 raise ToolError("Activity stats are unavailable right now") from e
             return aggregate(events, now, days, group_by, focus)
+
+        @mcp.prompt(
+            title="Retrospective",
+            description="A visual report of what has occupied my time, built from my vault activity.",
+        )
+        def retrospective(
+            period: Annotated[str, Field(description="How far back: 30d, 90d, 12w, 6m, 1y")] = "90d",
+        ) -> str:
+            try:
+                return retrospective_prompt(period)
+            except ValueError as e:
+                raise ToolError(str(e)) from e
 
     return mcp
 

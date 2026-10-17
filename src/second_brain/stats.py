@@ -492,6 +492,9 @@ DIMENSIONS = {"topics": "tags", "notes": "notes", "people": "people", "projects"
 TOP_N = 10
 QUIET_N = 5
 QUIET_MIN_SCORE = 3.0
+SERIES_TOPICS_N = 6
+OTHER = "other"
+UNTAGGED = "untagged"
 
 
 def parse_period(period: str) -> int:
@@ -524,6 +527,26 @@ def _scores(events: list[Event], dim: str) -> defaultdict[str, float]:
         for v in _values_of(e, dim):
             c[v] += e.weight
     return c
+
+
+def _topic_shares(events: list[Event], keep: list[str] | None) -> dict[str, float]:
+    """Each event's weight split evenly across its topics, so the shares sum to the total score.
+
+    With `keep`, topics outside it are folded into "other"; events without topics count as "untagged".
+    """
+    shares: defaultdict[str, float] = defaultdict(float)
+    kept = set(keep) if keep is not None else None
+    for e in events:
+        topics = _values_of(e, "tags")
+        if not topics:
+            shares[UNTAGGED] += e.weight
+            continue
+        part = e.weight / len(topics)
+        for t in topics:
+            shares[t if kept is None or t in kept else OTHER] += part
+    if keep is not None:
+        return {k: shares.get(k, 0.0) for k in [*keep, OTHER, UNTAGGED]}
+    return {k: v for k, v in shares.items() if k != UNTAGGED}
 
 
 def _most(scores: dict[str, float], n: int) -> list[tuple[str, float]]:
@@ -572,12 +595,16 @@ def aggregate(
         b = _next_bucket(b, group_by)
     for e in cur:
         series.setdefault(_bucket(e.ts.date(), group_by), []).append(e)
+    # One fixed set of topics for every bucket, so the series can be drawn as a stacked chart.
+    series_topics = [t for t, _ in _most(_topic_shares(cur, None), SERIES_TOPICS_N)]
+    out["series_topics"] = series_topics
     out["series"] = [
         {
             "start": b.isoformat(),
             "events": len(es),
             "score": r(sum(e.weight for e in es)),
             "top_topics": [t for t, _ in _most(_scores(es, "tags"), 3)],
+            "by_topic": {k: r(v) for k, v in _topic_shares(es, series_topics).items() if v},
         }
         for b, es in sorted(series.items())
     ]
