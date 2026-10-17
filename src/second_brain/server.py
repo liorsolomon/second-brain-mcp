@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import threading
+from contextlib import closing
 from dataclasses import asdict
 from typing import Annotated, Any
 
@@ -17,6 +19,7 @@ from .auth import AllowlistMiddleware, build_auth_provider
 from .config import Settings
 from .logs import uvicorn_log_config
 from .people import People
+from .stats import Focus, GroupBy, StatsMiddleware, StatsStore, aggregate, build_recorder, parse_period
 from .storage import LocalStorage, S3Storage, StorageError, clean_path
 from .vault import FOLDERS, Vault, VaultError, wikilink
 
@@ -49,8 +52,17 @@ def build_server(settings: Settings | None = None, vault: Vault | None = None) -
     people = People(vault)
     lock = threading.RLock()
 
+    def snapshot(refs: list[str]) -> list[tuple[str, dict[str, Any]]]:
+        """Paths and frontmatter of the notes an activity event refers to (recorder thread)."""
+        with lock:
+            notes = [vault.resolve(r) for r in refs]
+        return [(n.path, dict(n.meta)) for n in notes if n is not None]
+
     auth = build_auth_provider(settings) if settings.transport == "http" else None
-    middleware = [AllowlistMiddleware(settings.allowed_emails)] if auth else []
+    middleware: list[Any] = [AllowlistMiddleware(settings.allowed_emails)] if auth else []
+    recorder = build_recorder(settings, snapshot)
+    if recorder:
+        middleware.append(StatsMiddleware(recorder, settings.stats_log_queries))
     mcp = FastMCP("second-brain", instructions=INSTRUCTIONS, auth=auth, middleware=middleware, mask_error_details=True)
 
     def guard(fn):
@@ -335,6 +347,33 @@ def build_server(settings: Settings | None = None, vault: Vault | None = None) -
     def people_graph(org: str | None = None, context: str | None = None) -> dict[str, Any]:
         """The people graph (nodes and connection edges), optionally filtered by org or context."""
         return guard(lambda: people.graph(org, context))()
+
+    # --------------------------------------------------------------- activity
+
+    if recorder:
+        store_url = recorder.store.url
+
+        @mcp.tool(annotations=RO)
+        def activity(
+            period: Annotated[str, Field(description="How far back: 30d, 90d, 12w, 6m, 1y")] = "90d",
+            group_by: Annotated[GroupBy, Field(description="Time-series bucket size")] = "week",
+            focus: Annotated[Focus, Field(description="Which rankings to include")] = "all",
+        ) -> dict[str, Any]:
+            """What has occupied the user's time: aggregates of their vault activity over a period, with a
+            time series, top topics/notes/people/projects (trend vs the previous equal period), new notes,
+            interactions by person, and things that went quiet. Use for retrospectives and charts."""
+            try:
+                days = parse_period(period)
+            except ValueError as e:
+                raise ToolError(str(e)) from e
+            now = dt.datetime.now(dt.UTC)
+            try:
+                with closing(StatsStore(store_url)) as store:
+                    events = store.events_since(now - dt.timedelta(days=2 * days))
+            except Exception as e:
+                log.warning("activity: query failed (%s)", type(e).__name__)
+                raise ToolError("Activity stats are unavailable right now") from e
+            return aggregate(events, now, days, group_by, focus)
 
     return mcp
 

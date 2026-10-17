@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -42,6 +42,18 @@ class Settings(BaseSettings):
     # registration lets anyone write unlimited, never-expiring records to OAuth storage.
     # Turn on only for an MCP client that can't use metadata documents.
     allow_dynamic_client_registration: bool = False
+
+    # Activity statistics: one small event per tool call, kept in Postgres (see SECURITY.md).
+    # On by default; SB_STATS=off disables recording and the `activity` tool. Without a
+    # database URL the server logs a warning and runs without stats.
+    stats: bool = True
+    # SB_DATABASE_URL, or DATABASE_URL as provided by a Railway Postgres service.
+    database_url: SecretStr | None = Field(
+        default=None, validation_alias=AliasChoices("SB_DATABASE_URL", "DATABASE_URL", "database_url")
+    )
+    stats_retention_days: int = Field(default=730, ge=1)
+    # Store the text of `search` queries. Off by default: queries can be more revealing than note paths.
+    stats_log_queries: bool = False
 
     @field_validator("allowed_emails", mode="before")
     @classmethod

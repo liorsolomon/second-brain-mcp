@@ -30,7 +30,10 @@ flowchart LR
 | `link` | link two notes both ways | `follow_ups_due` | overdue and upcoming follow-ups |
 | `daily` | append to today's note | `people_graph` | nodes + edges, filter by org/context |
 | `archive` | the only "delete": moves to `Archive/` | | |
-| `health` | broken links, orphans, inbox, stale projects | | |
+| `health` | broken links, orphans, inbox, stale projects | `activity` | what occupied your time: trends in topics, notes, people, projects |
+
+### Activity stats
+With a Postgres database configured, the server records one small event per tool call: which notes were touched, and the tags, projects, people and organizations in their frontmatter. Never note contents. Ask Claude for a retrospective ("what took my time this quarter?") and it calls `activity`, which returns aggregates only: a weekly or monthly time series, top topics/notes/people/projects with the trend against the previous period, new notes, interactions by person, and what went quiet. Repeated reads of the same note within 30 minutes count once, and routine calls (`context`, `health`, `follow_ups_due`) aren't recorded. On by default when a database is configured; `SB_STATS=off` turns it off. See [SECURITY.md](SECURITY.md#activity-stats) for what's stored.
 
 ## Vault format
 PARA folders plus `People/`, `Organizations/`, `Meetings/`, `Daily/` and `00-Inbox/`. YAML frontmatter on every note, and `[[wikilinks]]` by bare name. See [`examples/vault`](examples/vault) (all fictional): copy it to start your own vault, and edit its `CLAUDE.md` to change the rules Claude follows.
@@ -48,6 +51,7 @@ claude mcp add second-brain -e SB_VAULT_PATH="$PWD/examples/vault" -- uv --direc
 3. [Sync Obsidian with the S3 vault](docs/obsidian-sync.md) (Remotely Save, desktop and mobile)
 
 ## Roadmap
+- [x] Activity stats: what occupies your time, as aggregates Claude can chart
 - [ ] Semantic search: heading-level chunks, pgvector + full-text, merged by rank, with frontmatter filters
 - [ ] `/brain` Claude Code skill for the session routine
 - [ ] Persistent OAuth client storage (survives restarts)
