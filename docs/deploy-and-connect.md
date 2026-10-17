@@ -23,7 +23,6 @@ Optional, for persistent logins (see [Keep logins across redeploys](#keep-logins
 |---|---|
 | `SB_OAUTH_STORAGE_DIR` | the volume mount path, e.g. `/data/oauth` |
 | `SB_OAUTH_STORAGE_KEY` | optional; encrypts the OAuth state. Defaults to a key derived from `SB_JWT_SIGNING_KEY` |
-| `RAILWAY_RUN_UID` | `0`, so the container can write to the root-owned volume |
 
 Check that the deploy is up: `curl https://<domain>/health` should return `{"status":"ok"}`, and any request to `/mcp` without a login should get a 401.
 
@@ -32,8 +31,9 @@ The OAuth proxy keeps registered clients and tokens on disk. By default that dis
 
 1. In the Railway service, **right-click the canvas → Volume**, attach it to `second-brain-mcp`, and set the mount path to `/data`.
 2. Set `SB_OAUTH_STORAGE_DIR=/data/oauth`.
-3. Set `RAILWAY_RUN_UID=0`. Railway mounts volumes owned by root and the image runs as an unprivileged user, so without this the server can't write the volume. It fails at startup with `SB_OAUTH_STORAGE_DIR is not writable` instead of silently falling back.
-4. Redeploy and sign in once from each client.
+3. Redeploy and sign in once from each client.
+
+Railway mounts volumes owned by root. The image's entrypoint starts as root only to create `SB_OAUTH_STORAGE_DIR` and hand it to the unprivileged `brain` user (mode 700), then drops to `brain` with `setpriv --no-new-privs` before starting the server, so the server never runs as root. **Don't set `RAILWAY_RUN_UID`.** If the directory still isn't writable, startup fails with `SB_OAUTH_STORAGE_DIR is not writable` rather than silently falling back.
 
 The state is encrypted at rest with Fernet. The key comes from `SB_OAUTH_STORAGE_KEY` if it's set, otherwise it's derived from `SB_JWT_SIGNING_KEY`. If you change that key, or `SB_JWT_SIGNING_KEY`, the old entries can no longer be read. They're ignored rather than causing errors, and every client signs in once more. Changing `SB_JWT_SIGNING_KEY` also invalidates issued tokens.
 

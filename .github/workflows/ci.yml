@@ -46,3 +46,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: docker build -t second-brain-mcp .
+      - name: Runs as non-root with a root-owned volume
+        run: |
+          mkdir data && sudo chown root:root data && sudo chmod 755 data
+          out=$(docker run --rm -v "$PWD/data:/data" -e SB_OAUTH_STORAGE_DIR=/data/oauth second-brain-mcp \
+            sh -c 'echo "uid=$(id -u)"; stat -c "owner=%U mode=%a" /data/oauth; touch /data/oauth/probe && echo storage=writable; touch /app/probe 2>/dev/null && echo app=writable || echo app=readonly')
+          echo "$out"
+          echo "$out" | grep -qx "uid=10001"
+          echo "$out" | grep -qx "owner=brain mode=700"
+          echo "$out" | grep -qx "storage=writable"
+          echo "$out" | grep -qx "app=readonly"
