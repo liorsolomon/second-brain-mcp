@@ -24,6 +24,14 @@ Optional, for persistent logins (see [Keep logins across redeploys](#keep-logins
 | `SB_OAUTH_STORAGE_DIR` | the volume mount path, e.g. `/data/oauth` |
 | `SB_OAUTH_STORAGE_KEY` | optional; encrypts the OAuth state. Defaults to a key derived from `SB_JWT_SIGNING_KEY` |
 
+Optional, for activity stats (see [Activity stats](#activity-stats)):
+
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (a reference to the Railway Postgres service) |
+| `SB_STATS_RETENTION_DAYS` | optional; days of history to keep, default `730` |
+| `SB_STATS_LOG_QUERIES` | optional; `true` stores search text, default `false` |
+
 Check that the deploy is up: `curl https://<domain>/health` should return `{"status":"ok"}`, and any request to `/mcp` without a login should get a 401.
 
 ### Keep logins across redeploys
@@ -42,6 +50,15 @@ Notes:
 - The volume only holds OAuth client registrations and tokens. The vault itself stays in S3.
 
 **Check that it works:** sign in from Claude Code (`/mcp`) and call a tool, such as `health`. Then trigger a redeploy (`railway redeploy`, or push a commit) and wait for `/health` to return ok. Call the tool again. It should work without a browser window opening. In the deploy logs, look for `OAuth state persisted under /data/oauth` at startup.
+
+### Activity stats
+The `activity` tool shows what has occupied your time (topics, notes, people, projects) from the tool calls Claude makes. It needs a Postgres database; without one the server logs a warning and runs without it.
+
+1. Add a database to the project: `railway add --database postgres` (or **+ New → Database → PostgreSQL** in the dashboard).
+2. In the `second-brain-mcp` service, add the variable `DATABASE_URL` with the value `${{Postgres.DATABASE_URL}}`. That reference resolves to the private-network address (`postgres.railway.internal`), so traffic never leaves Railway's network. Don't enable a public TCP proxy on the database.
+3. Redeploy. The deploy logs should show `Activity stats on: recording to Postgres`. The table is created at startup.
+
+To turn stats off, set `SB_STATS=off`. What gets stored, and what never does, is in [SECURITY.md](../SECURITY.md#activity-stats).
 
 ## 3. Connect Claude
 - **Claude.ai** (web, desktop, mobile): Settings → Connectors → **Add custom connector** → URL `https://<domain>/mcp`. Sign in with your allowlisted Google account.

@@ -27,3 +27,11 @@ def vault(vault_dir: Path) -> Vault:
 @pytest.fixture
 def people(vault: Vault) -> People:
     return People(vault)
+
+
+@pytest.fixture(autouse=True)
+def _no_stats_from_env(monkeypatch):
+    """Never record a test's tool calls into a database configured in the developer's env or .env."""
+    monkeypatch.setenv("SB_STATS", "off")
+    monkeypatch.delenv("SB_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
