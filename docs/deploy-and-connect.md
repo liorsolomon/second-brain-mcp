@@ -27,8 +27,8 @@ Check that the deploy is up: `curl https://<domain>/health` should return `{"sta
   ```
   Then run `/mcp` in Claude Code to sign in.
 
-## 4. Obsidian on your laptops
-Install the **Remotely Save** plugin and choose S3. Use an IAM user or role scoped the same way as the server's, and leave the plugin's own end-to-end encryption **off**, because the server has to be able to read the notes.
+## 4. Obsidian on your laptops and phone
+Sync Obsidian with the same bucket using the **Remotely Save** plugin and the dedicated `second-brain-obsidian` IAM user. See [obsidian-sync.md](obsidian-sync.md).
 
 ## Running locally (stdio)
 ```bash
