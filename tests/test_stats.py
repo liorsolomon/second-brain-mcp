@@ -509,3 +509,66 @@ async def test_pg_end_to_end(vault, pg):
         out = (await c.call_tool("activity", {"period": "7d"})).data
     assert out["totals"]["events"] == 3
     assert out["interactions"] == [{"name": "Dana Rivers", "count": 1, "prev": 0}]
+
+
+# --------------------------------------------------------------------------- per-topic series
+
+
+def test_series_by_topic_stacks_to_score(events):
+    out = aggregate(events, NOW, 30, "week")
+    # acme 1.5 + 2, launch 1.5 + 1. "meetings" is structural (not a topic), so the meeting (4) and the
+    # tagless upsert_person (3) count as "untagged".
+    assert out["series_topics"] == ["acme", "launch"]
+    for b in out["series"]:
+        assert sum(b["by_topic"].values()) == pytest.approx(b["score"])
+        assert set(b["by_topic"]) <= {*out["series_topics"], "other", "untagged"}
+    totals = {k: sum(b["by_topic"].get(k, 0) for b in out["series"]) for k in ["acme", "launch", "untagged"]}
+    assert totals == {"acme": 3.5, "launch": 2.5, "untagged": 4 + 3}
+
+
+def test_series_by_topic_folds_the_rest_into_other(events, monkeypatch):
+    monkeypatch.setattr(stats, "SERIES_TOPICS_N", 1)
+    out = aggregate(events, NOW, 30, "week")
+    assert out["series_topics"] == ["acme"]
+    other = sum(b["by_topic"].get("other", 0) for b in out["series"])
+    assert other == pytest.approx(2.5)  # launch
+    assert all(sum(b["by_topic"].values()) == pytest.approx(b["score"]) for b in out["series"])
+
+
+def test_series_by_topic_empty_bucket_is_empty(events):
+    out = aggregate(events, NOW, 30, "week")
+    empty = [b for b in out["series"] if b["events"] == 0]
+    assert empty and all(b["by_topic"] == {} for b in empty)
+
+
+# --------------------------------------------------------------------------- retrospective prompt
+
+
+async def test_retrospective_prompt_registered_with_stats(vault, fake_store):
+    mcp = build_server(settings(), vault=vault)
+    async with Client(mcp) as c:
+        assert "retrospective" in {p.name for p in await c.list_prompts()}
+        text = (await c.get_prompt("retrospective", {"period": "30d"})).messages[0].content.text
+    assert 'period="30d", group_by="week", focus="all"' in text
+    assert "series_topics" in text and "by_topic" in text
+    assert "not hours" in text
+
+
+async def test_retrospective_prompt_uses_months_for_long_periods(vault, fake_store):
+    mcp = build_server(settings(), vault=vault)
+    async with Client(mcp) as c:
+        text = (await c.get_prompt("retrospective", {"period": "1y"})).messages[0].content.text
+    assert 'group_by="month"' in text and "by month" in text
+
+
+async def test_retrospective_prompt_rejects_bad_period(vault, fake_store):
+    mcp = build_server(settings(), vault=vault)
+    async with Client(mcp) as c:
+        with pytest.raises(Exception, match="period"):
+            await c.get_prompt("retrospective", {"period": "forever"})
+
+
+async def test_no_retrospective_prompt_without_stats(vault):
+    mcp = build_server(settings(stats=False), vault=vault)
+    async with Client(mcp) as c:
+        assert "retrospective" not in {p.name for p in await c.list_prompts()}
