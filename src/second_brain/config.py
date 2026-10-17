@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     oauth_storage_key: SecretStr | None = None
     # NoDecode: read the env var as a comma-separated string, not JSON.
     allowed_emails: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    # Open dynamic client registration (POST /register). Off by default: Claude.ai and
+    # Claude Code identify themselves with client ID metadata documents instead, and open
+    # registration lets anyone write unlimited, never-expiring records to OAuth storage.
+    # Turn on only for an MCP client that can't use metadata documents.
+    allow_dynamic_client_registration: bool = False
 
     @field_validator("allowed_emails", mode="before")
     @classmethod

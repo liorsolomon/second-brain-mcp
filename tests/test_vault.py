@@ -83,5 +83,5 @@ def test_health(vault):
 
 
 def test_links_ignore_code():
-    n = Note("x.md", {}, "See [[Real]].\n```python\ndf[[\"A\", \"B\"]]\n```\nand `[[Inline]]`")
+    n = Note("x.md", {}, 'See [[Real]].\n```python\ndf[["A", "B"]]\n```\nand `[[Inline]]`')
     assert n.links == {"Real"}

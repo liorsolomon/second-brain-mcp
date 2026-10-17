@@ -66,7 +66,7 @@ def build_auth_provider(settings: Settings):
     assert (
         settings.base_url and settings.google_client_id and settings.google_client_secret and settings.jwt_signing_key
     )
-    return GoogleProvider(
+    provider = GoogleProvider(
         client_id=settings.google_client_id,
         client_secret=settings.google_client_secret.get_secret_value(),
         base_url=settings.base_url,
@@ -81,6 +81,12 @@ def build_auth_provider(settings: Settings):
             "http://127.0.0.1:*",
         ],
     )
+    # The OAuth proxy always enables open registration; client ID metadata documents
+    # (CIMD) stay on either way. Disabling it removes POST /register and its
+    # advertisement in the authorization-server metadata.
+    if provider.client_registration_options is not None:
+        provider.client_registration_options.enabled = settings.allow_dynamic_client_registration
+    return provider
 
 
 def is_allowed(claims: dict[str, Any] | None, allowed: list[str]) -> bool:

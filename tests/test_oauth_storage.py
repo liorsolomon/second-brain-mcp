@@ -32,7 +32,9 @@ async def test_state_survives_a_new_process(tmp_path: Path):
     settings = http_settings(oauth_storage_dir=str(tmp_path))
     first = build_client_storage(settings)
     assert first is not None
-    await first.put("client-1", {"client_id": "client-1", "redirect_uris": ["http://localhost:1234"]}, collection="clients")
+    await first.put(
+        "client-1", {"client_id": "client-1", "redirect_uris": ["http://localhost:1234"]}, collection="clients"
+    )
 
     # A redeploy builds a fresh store over the same volume.
     second = build_client_storage(settings)
@@ -57,7 +59,9 @@ async def test_key_change_is_a_cache_miss_not_a_crash(tmp_path: Path):
     assert old is not None
     await old.put("client-1", {"client_id": "client-1"}, collection="clients")
 
-    rotated = build_client_storage(http_settings(oauth_storage_dir=str(tmp_path), oauth_storage_key=secrets.token_urlsafe(32)))
+    rotated = build_client_storage(
+        http_settings(oauth_storage_dir=str(tmp_path), oauth_storage_key=secrets.token_urlsafe(32))
+    )
     assert rotated is not None
     assert await rotated.get("client-1", collection="clients") is None
 

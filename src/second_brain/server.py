@@ -15,8 +15,9 @@ from starlette.responses import JSONResponse
 
 from .auth import AllowlistMiddleware, build_auth_provider
 from .config import Settings
+from .logs import uvicorn_log_config
 from .people import People
-from .storage import LocalStorage, S3Storage, StorageError
+from .storage import LocalStorage, S3Storage, StorageError, clean_path
 from .vault import FOLDERS, Vault, VaultError, wikilink
 
 log = logging.getLogger("second_brain")
@@ -145,8 +146,11 @@ def build_server(settings: Settings | None = None, vault: Vault | None = None) -
         """Create a new note. Fails if a note with that name already exists (use patch instead)."""
 
         def run():
-            if folder.split("/")[0] in (FOLDERS["people"], FOLDERS["meetings"], FOLDERS["archive"]):
-                raise VaultError("Use upsert_person / log_interaction / archive for that folder")
+            # Check the normalized path, not the raw input: "./People" and "/People" both land in People/.
+            top = clean_path(f"{folder}/x.md").split("/", 1)[0].casefold()
+            reserved = {FOLDERS[k].casefold() for k in ("people", "meetings", "archive")}
+            if top in reserved or type in ("person", "meeting"):
+                raise VaultError("Use upsert_person / log_interaction / archive for people, meetings and archiving")
             meta = {"type": type, "status": status, "tags": tags or []}
             if source:
                 meta["source"] = source
@@ -341,7 +345,13 @@ def main() -> None:
     server = build_server(settings)
     if settings.transport == "http":
         # No banner: it also triggers a PyPI update check on every start.
-        server.run(transport="http", host=settings.host, port=settings.port, show_banner=False)
+        server.run(
+            transport="http",
+            host=settings.host,
+            port=settings.port,
+            show_banner=False,
+            uvicorn_config={"log_config": uvicorn_log_config()},
+        )
     else:
         server.run(show_banner=False)
 
