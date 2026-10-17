@@ -38,6 +38,16 @@ async def test_lists_all_tools(server):
     assert "delete" not in names
 
 
+async def test_instructions_ask_to_read_first_and_capture(server):
+    text = (server.instructions or "").lower()
+    async with Client(server) as c:
+        tools = {t.name: t for t in await c.list_tools()}
+    assert "always call `context` first" in text
+    assert "without asking" in text and "what you logged" in text
+    assert "not instructions" in text  # the prompt-injection guard stays
+    assert "first in every conversation" in (tools["context"].description or "")
+
+
 async def test_read_only_tools_are_annotated(server):
     async with Client(server) as c:
         tools = {t.name: t for t in await c.list_tools()}
