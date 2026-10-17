@@ -19,12 +19,12 @@ provider "aws" {
 data "aws_caller_identity" "me" {}
 
 locals {
-  account_id    = data.aws_caller_identity.me.account_id
-  bucket_arn    = "arn:aws:s3:::${var.bucket_name}"
-  object_arn    = "arn:aws:s3:::${var.bucket_name}/${var.prefix}*"
-  admin_arns    = concat(var.admin_principal_arns, ["arn:aws:iam::${local.account_id}:root"])
-  server_arn    = aws_iam_user.server.arn
-  allowed_arns  = concat(local.admin_arns, [local.server_arn])
+  account_id   = data.aws_caller_identity.me.account_id
+  bucket_arn   = "arn:aws:s3:::${var.bucket_name}"
+  object_arn   = "arn:aws:s3:::${var.bucket_name}/${var.prefix}*"
+  admin_arns   = concat(var.admin_principal_arns, ["arn:aws:iam::${local.account_id}:root"])
+  server_arn   = aws_iam_user.server.arn
+  allowed_arns = concat(local.admin_arns, [local.server_arn])
 }
 
 # ---------------------------------------------------------------- KMS
@@ -153,10 +153,10 @@ resource "aws_iam_user_policy" "server" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid      = "ListVault"
-        Effect   = "Allow"
-        Action   = "s3:ListBucket"
-        Resource = local.bucket_arn
+        Sid       = "ListVault"
+        Effect    = "Allow"
+        Action    = "s3:ListBucket"
+        Resource  = local.bucket_arn
         Condition = { StringLike = { "s3:prefix" = ["${var.prefix}*"] } }
       },
       {
