@@ -3,7 +3,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.68"
     }
   }
   # Configure a remote, locked-down backend in backend.tf (git-ignored). Never commit state.
