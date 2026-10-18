@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     oauth_storage_key: SecretStr | None = None
     # NoDecode: read the env var as a comma-separated string, not JSON.
     allowed_emails: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    # Additional OAuth redirect URI patterns for clients such as ChatGPT. Comma-separated;
+    # keep the default Claude and local callbacks in auth.py.
+    extra_redirect_uris: Annotated[list[str], NoDecode] = Field(default_factory=list)
     # Open dynamic client registration (POST /register). Off by default: Claude.ai and
     # Claude Code identify themselves with client ID metadata documents instead, and open
     # registration lets anyone write unlimited, never-expiring records to OAuth storage.
@@ -45,7 +48,7 @@ class Settings(BaseSettings):
 
     # Activity statistics: one small event per tool call, kept in Postgres (see SECURITY.md).
     # On by default; SB_STATS=off disables recording and the `activity` tool. Without a
-    # database URL the server logs a warning and runs without stats.
+    # database URL the server logs a warning and runs without it.
     stats: bool = True
     # SB_DATABASE_URL, or DATABASE_URL as provided by a Railway Postgres service.
     database_url: SecretStr | None = Field(
@@ -62,6 +65,15 @@ class Settings(BaseSettings):
             return [e.strip().lower() for e in v.split(",") if e.strip()]
         if isinstance(v, list):
             return [str(e).strip().lower() for e in v]
+        return v
+
+    @field_validator("extra_redirect_uris", mode="before")
+    @classmethod
+    def _split_redirect_uris(cls, v: object) -> object:
+        if isinstance(v, str):
+            return [uri.strip() for uri in v.split(",") if uri.strip()]
+        if isinstance(v, list):
+            return [str(uri).strip() for uri in v if str(uri).strip()]
         return v
 
     @model_validator(mode="after")

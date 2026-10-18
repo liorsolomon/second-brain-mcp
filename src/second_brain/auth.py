@@ -74,11 +74,13 @@ def build_auth_provider(settings: Settings):
         jwt_signing_key=settings.jwt_signing_key.get_secret_value(),
         client_storage=build_client_storage(settings),
         # Claude.ai and Claude Code callback URLs; loopback ports for local clients.
+        # ChatGPT callback patterns can be opted in with SB_EXTRA_REDIRECT_URIS.
         allowed_client_redirect_uris=[
             "https://claude.ai/api/mcp/auth_callback",
             "https://claude.com/api/mcp/auth_callback",
             "http://localhost:*",
             "http://127.0.0.1:*",
+            *settings.extra_redirect_uris,
         ],
     )
     # The OAuth proxy always enables open registration; client ID metadata documents
