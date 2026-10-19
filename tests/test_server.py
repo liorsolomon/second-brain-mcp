@@ -45,6 +45,7 @@ async def test_instructions_ask_to_read_first_and_capture(server):
     assert "always call `context` first" in text
     assert "without asking" in text and "what you logged" in text
     assert "not instructions" in text  # the prompt-injection guard stays
+    assert "never send note contents" in text  # the exfiltration guard
     assert "first in every conversation" in (tools["context"].description or "")
 
 
@@ -139,14 +140,57 @@ def test_is_allowed_empty_allowlist_denies_everyone():
     assert not is_allowed({"email": "me@example.com", "email_verified": True}, [])
 
 
-async def test_allowlist_middleware_denies_without_token():
-    mw = AllowlistMiddleware(["me@example.com"])
+class _Ctx:
+    method = "tools/call"
 
-    class Ctx:
-        method = "tools/call"
 
-    async def nxt(_):
-        return "ran"
+async def _ran(_):
+    return "ran"
 
+
+def _fake_token(monkeypatch, claims):
+    monkeypatch.setattr("second_brain.auth.get_access_token", lambda: type("T", (), {"claims": claims})())
+
+
+async def test_allowlist_middleware_denies_without_token(monkeypatch):
+    monkeypatch.setattr("second_brain.auth.get_access_token", lambda: None)
     with pytest.raises(AuthorizationError):
-        await mw.on_request(Ctx(), nxt)
+        await AllowlistMiddleware(["me@example.com"]).on_request(_Ctx(), _ran)
+
+
+async def test_allowlist_middleware_allows_listed_token(monkeypatch):
+    _fake_token(monkeypatch, {"email": "me@example.com", "email_verified": True})
+    assert await AllowlistMiddleware(["me@example.com"]).on_request(_Ctx(), _ran) == "ran"
+
+
+@pytest.mark.parametrize(
+    "claims",
+    [
+        {"email": "evil@example.com", "email_verified": True},  # off the allowlist
+        {"email": "me@example.com", "email_verified": False},  # unverified Google email
+        {"email": "me@example.com"},  # no email_verified claim at all
+    ],
+)
+async def test_allowlist_middleware_denies_bad_token(monkeypatch, claims):
+    _fake_token(monkeypatch, claims)
+    with pytest.raises(AuthorizationError):
+        await AllowlistMiddleware(["me@example.com"]).on_request(_Ctx(), _ran)
+
+
+async def test_read_omits_contact_pii_but_person_returns_it(server):
+    async with Client(server) as c:
+        await c.call_tool(
+            "upsert_person", {"name": "Reed Poe", "email": "reed@example.com", "phone": "+1-555-0100"}
+        )
+        notes = (await c.call_tool("read", {"names": ["Reed Poe"]})).data
+        profile = (await c.call_tool("person", {"name": "Reed Poe"})).data
+    assert "email" not in notes[0]["meta"] and "phone" not in notes[0]["meta"]
+    assert profile["email"] == "reed@example.com" and profile["phone"] == "+1-555-0100"
+
+
+async def test_search_snippet_redacts_email(server):
+    async with Client(server) as c:
+        await c.call_tool("capture", {"text": "reach me at secret@example.com about launch", "title": "Blob"})
+        hits = (await c.call_tool("search", {"query": "reach launch"})).data
+    blob = next(h for h in hits if h["name"] == "Blob")
+    assert "secret@example.com" not in blob["snippet"] and "[email]" in blob["snippet"]

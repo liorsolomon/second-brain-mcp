@@ -15,6 +15,12 @@ from .storage import Storage, StorageError, clean_path
 WIKILINK_RE = re.compile(r"(?<!`)\[\[([^\]|#`]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
 CODE_RE = re.compile(r"```.*?```|`[^`\n]*`", re.S)
 UNSAFE_NAME_RE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
+EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
+
+
+def redact_emails(text: str) -> str:
+    """Mask email addresses. Used on search snippets so broad queries don't preview contact PII."""
+    return EMAIL_RE.sub("[email]", text)
 
 FOLDERS = {
     "inbox": "00-Inbox",
@@ -293,4 +299,4 @@ def _snippet(body: str, terms: list[str], width: int = 160) -> str:
     low = body.lower()
     pos = min((low.find(t) for t in terms if t in low), default=0)
     start = max(0, pos - width // 3)
-    return " ".join(body[start : start + width].split())
+    return redact_emails(" ".join(body[start : start + width].split()))

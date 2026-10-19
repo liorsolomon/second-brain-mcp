@@ -47,6 +47,11 @@ PERSON_FIELDS = (
     "phone",
 )
 
+# Contact PII. The single-person `person` lookup returns these, but the bulk `read` tool
+# strips them from frontmatter so one call can't harvest contact details for many people at
+# once (e.g. a prompt-injected session reading every note in the People folder).
+CONTACT_FIELDS = ("email", "phone")
+
 
 def inverse(rel: str) -> str:
     return INVERSE.get(rel, rel)

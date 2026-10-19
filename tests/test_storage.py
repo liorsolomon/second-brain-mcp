@@ -5,7 +5,21 @@ from moto import mock_aws
 from second_brain.storage import LocalStorage, S3Storage, StorageError, clean_path
 
 
-@pytest.mark.parametrize("bad", ["../etc/passwd", "a/../../b.md", ".obsidian/app.json", ".git/config", "", "a\x00.md"])
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "../etc/passwd",
+        "a/../../b.md",
+        ".obsidian/app.json",
+        ".git/config",
+        "",
+        "a\x00.md",
+        # hidden segments at any depth, not only the top level
+        "Resources/.exfil/stash.md",
+        "People/.git/config.md",
+        "a/b/.secret/c.md",
+    ],
+)
 def test_clean_path_rejects_escapes_and_hidden(bad):
     with pytest.raises(StorageError):
         clean_path(bad)
