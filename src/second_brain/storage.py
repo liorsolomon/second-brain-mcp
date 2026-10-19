@@ -17,7 +17,10 @@ def clean_path(path: str) -> str:
     p = PurePosixPath(path.replace("\\", "/").lstrip("/"))
     if any(part in ("..", "") for part in p.parts) or not p.parts:
         raise StorageError(f"Invalid path: {path!r}")
-    if p.parts[0].startswith("."):
+    # Reject hidden segments at any depth, not just the top level: a nested hidden folder
+    # (e.g. Resources/.exfil/x.md) would otherwise be written yet stay invisible to list(),
+    # search and health, which all skip dot-segments.
+    if any(part.startswith(".") for part in p.parts):
         raise StorageError(f"Hidden paths are not accessible: {path!r}")
     return p.as_posix()
 

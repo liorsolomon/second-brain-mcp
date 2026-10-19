@@ -1,11 +1,16 @@
 import pytest
 
-from second_brain.vault import Note, VaultError, link_target
+from second_brain.vault import Note, VaultError, link_target, redact_emails
 
 
 def test_link_target():
     assert link_target("[[People/Dana Rivers|Dana]]") == "Dana Rivers"
     assert link_target("Dana Rivers.md") == "Dana Rivers"
+
+
+def test_redact_emails():
+    assert redact_emails("ping a.b+tag@sub.example.co.uk now") == "ping [email] now"
+    assert redact_emails("no address here") == "no address here"
 
 
 def test_resolve_by_name_alias_and_path(vault):
