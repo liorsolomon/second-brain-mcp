@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     s3_prefix: str = ""
     s3_region: str | None = None
     s3_kms_key_id: str | None = None
+    # How long a vault listing is reused by read tools before storage is listed again. This
+    # process's own writes show at once, and write tools always list first; only notes changed by
+    # other writers (e.g. Obsidian on another device) can take this long to appear. 0 = every call.
+    listing_ttl_seconds: float = Field(default=5.0, ge=0)
 
     # Transport
     transport: Literal["stdio", "http"] = "stdio"
@@ -45,6 +49,11 @@ class Settings(BaseSettings):
     # registration lets anyone write unlimited, never-expiring records to OAuth storage.
     # Turn on only for an MCP client that can't use metadata documents.
     allow_dynamic_client_registration: bool = False
+    # Reuse a successful Google token verification (tokeninfo + userinfo) for up to this many
+    # seconds, never past the token's own expiry. Keyed by a SHA-256 of the token, in memory only.
+    # Removing an email from SB_ALLOWED_EMAILS still takes effect at once; a token revoked at
+    # Google stays accepted until the cached entry expires. 0 = verify with Google on every request.
+    token_cache_ttl_seconds: int = Field(default=3600, ge=0)
 
     # Activity statistics: one small event per tool call, kept in Postgres (see SECURITY.md).
     # On by default; SB_STATS=off disables recording and the `activity` tool. Without a
