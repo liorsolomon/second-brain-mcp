@@ -27,10 +27,22 @@ def clean_path(path: str) -> str:
 
 class Storage(Protocol):
     def list(self) -> list[str]: ...
+    def versions(self) -> dict[str, str]:
+        """Every note path mapped to a token that changes whenever the file's content changes."""
+        ...
+
     def read(self, path: str) -> str: ...
-    def write(self, path: str, content: str) -> None: ...
+    def write(self, path: str, content: str) -> str:
+        """Write a note; returns its new version token (as `versions()` would report it)."""
+        ...
+
     def move(self, src: str, dst: str) -> None: ...
     def exists(self, path: str) -> bool: ...
+
+
+def _stat_version(p: Path) -> str:
+    st = p.stat()
+    return f"{st.st_mtime_ns}-{st.st_size}"
 
 
 class LocalStorage:
@@ -46,12 +58,15 @@ class LocalStorage:
         return p
 
     def list(self) -> list[str]:
-        out = []
+        return sorted(self.versions())
+
+    def versions(self) -> dict[str, str]:
+        out = {}
         for p in self.root.rglob("*.md"):
             rel = p.relative_to(self.root)
             if not any(part.startswith(".") for part in rel.parts):
-                out.append(rel.as_posix())
-        return sorted(out)
+                out[rel.as_posix()] = _stat_version(p)
+        return out
 
     def read(self, path: str) -> str:
         p = self._abs(path)
@@ -59,12 +74,13 @@ class LocalStorage:
             raise StorageError(f"Note not found: {path}")
         return p.read_text(encoding="utf-8")
 
-    def write(self, path: str, content: str) -> None:
+    def write(self, path: str, content: str) -> str:
         p = self._abs(path)
         p.parent.mkdir(parents=True, exist_ok=True)
         tmp = p.with_suffix(p.suffix + ".tmp")
         tmp.write_text(content, encoding="utf-8")
         tmp.replace(p)
+        return _stat_version(p)
 
     def move(self, src: str, dst: str) -> None:
         s, d = self._abs(src), self._abs(dst)
@@ -95,14 +111,17 @@ class S3Storage:
         return self.prefix + clean_path(path)
 
     def list(self) -> list[str]:
-        out = []
+        return sorted(self.versions())
+
+    def versions(self) -> dict[str, str]:
+        out = {}
         paginator = self.s3.get_paginator("list_objects_v2")
         for page in paginator.paginate(Bucket=self.bucket, Prefix=self.prefix):
             for obj in page.get("Contents", []):
                 rel = obj["Key"][len(self.prefix) :]
                 if rel.endswith(".md") and not any(p.startswith(".") for p in rel.split("/")):
-                    out.append(rel)
-        return sorted(out)
+                    out[rel] = obj["ETag"]
+        return out
 
     def read(self, path: str) -> str:
         try:
@@ -111,15 +130,16 @@ class S3Storage:
             raise StorageError(f"Note not found: {path}") from e
         return obj["Body"].read().decode("utf-8")
 
-    def write(self, path: str, content: str) -> None:
+    def write(self, path: str, content: str) -> str:
         extra = {"ServerSideEncryption": "aws:kms", "SSEKMSKeyId": self.kms_key_id} if self.kms_key_id else {}
-        self.s3.put_object(
+        resp = self.s3.put_object(
             Bucket=self.bucket,
             Key=self._key(path),
             Body=content.encode("utf-8"),
             ContentType="text/markdown; charset=utf-8",
             **extra,
         )
+        return resp["ETag"]
 
     def move(self, src: str, dst: str) -> None:
         if self.exists(dst):

@@ -54,7 +54,7 @@ def build_storage(settings: Settings):
 
 def build_server(settings: Settings | None = None, vault: Vault | None = None) -> FastMCP:
     settings = settings or Settings()
-    vault = vault or Vault(build_storage(settings))
+    vault = vault or Vault(build_storage(settings), listing_ttl=settings.listing_ttl_seconds)
     people = People(vault)
     lock = threading.RLock()
 
@@ -71,16 +71,26 @@ def build_server(settings: Settings | None = None, vault: Vault | None = None) -
         middleware.append(StatsMiddleware(recorder, settings.stats_log_queries))
     mcp = FastMCP("second-brain", instructions=INSTRUCTIONS, auth=auth, middleware=middleware, mask_error_details=True)
 
-    def guard(fn):
-        """Serialize vault access and turn domain errors into client-visible tool errors."""
+    def guard(fn, write: bool = False):
+        """Serialize vault access and turn domain errors into client-visible tool errors.
+
+        Tools run in FastMCP's worker threads, so this lock only queues vault work, not the
+        event loop. Reads may use a listing up to `listing_ttl` old; writes list storage first
+        so they never edit a stale copy of a note another writer just changed.
+        """
 
         def run(*args, **kwargs):
             with lock:
+                if write:
+                    vault.expire_listing()
                 try:
-                    vault.refresh()
                     return fn(*args, **kwargs)
-                except (VaultError, StorageError, ValueError) as e:
-                    raise ToolError(str(e)) from e
+                except BaseException as e:
+                    # The call may have changed a cached Note without saving it.
+                    vault.discard_unsaved()
+                    if isinstance(e, (VaultError, StorageError, ValueError)):
+                        raise ToolError(str(e)) from e
+                    raise
 
         return run
 
@@ -152,7 +162,7 @@ def build_server(settings: Settings | None = None, vault: Vault | None = None) -
             )
             return {"path": n.path}
 
-        return guard(run)()
+        return guard(run, write=True)()
 
     @mcp.tool(annotations=RW)
     def write(
@@ -178,7 +188,7 @@ def build_server(settings: Settings | None = None, vault: Vault | None = None) -
             text = body if body.lstrip().startswith("# ") else f"# {name}\n\n{body}"
             return {"path": vault.create(folder, name, meta, text).path}
 
-        return guard(run)()
+        return guard(run, write=True)()
 
     @mcp.tool(annotations=RW)
     def patch(
@@ -209,7 +219,7 @@ def build_server(settings: Settings | None = None, vault: Vault | None = None) -
                 n.meta.update(set_meta)
             return {"path": vault.save(n).path}
 
-        return guard(run)()
+        return guard(run, write=True)()
 
     @mcp.tool(annotations=RW)
     def link(a: str, b: str, note: str | None = None) -> dict[str, str]:
@@ -223,7 +233,7 @@ def build_server(settings: Settings | None = None, vault: Vault | None = None) -
                     vault.save(src)
             return {"a": na.name, "b": nb.name}
 
-        return guard(run)()
+        return guard(run, write=True)()
 
     @mcp.tool(annotations=RW)
     def daily(entry: str, section: str = "Log") -> dict[str, str]:
@@ -234,12 +244,12 @@ def build_server(settings: Settings | None = None, vault: Vault | None = None) -
             vault.append_to_section(n, section, f"- {entry}")
             return {"path": vault.save(n).path}
 
-        return guard(run)()
+        return guard(run, write=True)()
 
     @mcp.tool(annotations={**RW, "idempotentHint": True})
     def archive(name: str) -> dict[str, str]:
         """Move a note to Archive/ (there is no hard delete; history is kept)."""
-        return guard(lambda: {"path": vault.archive(name).path})()
+        return guard(lambda: {"path": vault.archive(name).path}, write=True)()
 
     @mcp.tool(annotations=RO)
     def health() -> dict[str, Any]:
@@ -290,7 +300,7 @@ def build_server(settings: Settings | None = None, vault: Vault | None = None) -
             )
             return {"name": n.name, "path": n.path, "created": created}
 
-        return guard(run)()
+        return guard(run, write=True)()
 
     @mcp.tool(annotations=RW)
     def log_interaction(
@@ -320,7 +330,8 @@ def build_server(settings: Settings | None = None, vault: Vault | None = None) -
                 follow_ups,
                 follow_up_date,
                 meeting_note,
-            )
+            ),
+            write=True,
         )()
 
     @mcp.tool(annotations=RW)
@@ -335,7 +346,7 @@ def build_server(settings: Settings | None = None, vault: Vault | None = None) -
         ],
     ) -> dict[str, str]:
         """Record how two people are connected. Writes both sides (inverse relation on B)."""
-        return guard(lambda: people.connect(a, b, rel))()
+        return guard(lambda: people.connect(a, b, rel), write=True)()
 
     @mcp.tool(annotations=RO)
     def who_knows(

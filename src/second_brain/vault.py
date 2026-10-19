@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -15,12 +17,14 @@ from .storage import Storage, StorageError, clean_path
 WIKILINK_RE = re.compile(r"(?<!`)\[\[([^\]|#`]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
 CODE_RE = re.compile(r"```.*?```|`[^`\n]*`", re.S)
 UNSAFE_NAME_RE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
+READ_WORKERS = 16
 EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
 
 
 def redact_emails(text: str) -> str:
     """Mask email addresses. Used on search snippets so broad queries don't preview contact PII."""
     return EMAIL_RE.sub("[email]", text)
+
 
 FOLDERS = {
     "inbox": "00-Inbox",
@@ -107,23 +111,64 @@ class SearchHit:
 
 @dataclass
 class Vault:
+    """Notes over a Storage backend, with a parsed-note cache.
+
+    Not thread-safe: callers serialize access (the server holds one lock per call).
+
+    The cache is keyed by each file's version token (S3 ETag, local mtime+size), so only notes
+    that changed since they were parsed are read again. The listing itself is reused for
+    `listing_ttl` seconds; this process's own writes update it immediately, so only changes
+    made by other writers (e.g. Obsidian on another device) can take up to that long to show.
+    """
+
     storage: Storage
     today: Callable[[], dt.date] = dt.date.today
-    _cache: dict[str, Note] = field(default_factory=dict, repr=False)
+    listing_ttl: float = 5.0
+    clock: Callable[[], float] = time.monotonic
+    _cache: dict[str, tuple[str, Note]] = field(default_factory=dict, repr=False)
+    _listing: dict[str, str] | None = field(default=None, repr=False)
+    _listed_at: float = field(default=0.0, repr=False)
 
     # ---------- loading ----------
 
     def refresh(self) -> None:
+        """Forget the listing and every parsed note; the next access reloads from storage."""
+        self._listing = None
         self._cache.clear()
 
+    def expire_listing(self) -> None:
+        """List storage again on next access; parsed notes are kept and revalidated by version."""
+        self._listing = None
+
+    def discard_unsaved(self) -> None:
+        """Drop parsed notes after a failed call, which may have changed a cached Note without saving it."""
+        self._cache.clear()
+
+    def _versions(self) -> dict[str, str]:
+        if self._listing is None or self.clock() - self._listed_at >= self.listing_ttl:
+            self._listing = self.storage.versions()
+            self._listed_at = self.clock()
+            for stale in self._cache.keys() - self._listing.keys():
+                del self._cache[stale]
+        return self._listing
+
+    def _get(self, path: str, version: str) -> Note:
+        cached = self._cache.get(path)
+        if cached is not None and cached[0] == version:
+            return cached[1]
+        note = Note.parse(path, self.storage.read(path))
+        self._cache[path] = (version, note)
+        return note
+
     def notes(self) -> list[Note]:
-        paths = self.storage.list()
-        for stale in set(self._cache) - set(paths):
-            del self._cache[stale]
-        for p in paths:
-            if p not in self._cache:
-                self._cache[p] = Note.parse(p, self.storage.read(p))
-        return [self._cache[p] for p in paths if not p.startswith("Templates/")]
+        versions = self._versions()
+        missing = [p for p, v in versions.items() if self._cache.get(p, ("",))[0] != v]
+        if len(missing) > 1:
+            # A cold cache means one GET per note; on S3 that is a round trip each, so fetch in parallel.
+            with ThreadPoolExecutor(max_workers=min(READ_WORKERS, len(missing))) as pool:
+                for path, text in zip(missing, pool.map(self.storage.read, missing), strict=True):
+                    self._cache[path] = (versions[path], Note.parse(path, text))
+        return [self._get(p, v) for p, v in sorted(versions.items()) if not p.startswith("Templates/")]
 
     def resolve(self, name_or_path: str) -> Note | None:
         """Find a note by path, file name, or frontmatter alias (case-insensitive)."""
@@ -133,8 +178,17 @@ class Vault:
                 p = clean_path(target if target.endswith(".md") else target + ".md")
             except StorageError:
                 p = None
-            if p and self.storage.exists(p):
-                return self._load(p)
+            if p:
+                versions = self._versions()
+                if p in versions:
+                    return self._get(p, versions[p])
+                # Not in the (possibly slightly old) listing: ask storage, so a note another
+                # writer just created is found instead of being overwritten.
+                if self.storage.exists(p):
+                    self.expire_listing()
+                    versions = self._versions()
+                    if p in versions:
+                        return self._get(p, versions[p])
         key = link_target(target).lower()
         notes = self.notes()
         for n in notes:
@@ -157,17 +211,14 @@ class Vault:
             raise VaultError(f"No note named {name_or_path!r}")
         return note
 
-    def _load(self, path: str) -> Note:
-        note = Note.parse(path, self.storage.read(path))
-        self._cache[path] = note
-        return note
-
     # ---------- writing ----------
 
     def save(self, note: Note) -> Note:
         note.meta["updated"] = self.today().isoformat()
-        self.storage.write(note.path, note.render())
-        self._cache[note.path] = note
+        version = self.storage.write(note.path, note.render())
+        self._cache[note.path] = (version, note)
+        if self._listing is not None:
+            self._listing[note.path] = version
         return note
 
     def create(self, folder: str, name: str, meta: dict[str, Any], body: str) -> Note:
@@ -214,6 +265,8 @@ class Vault:
         dst = clean_path(f"{FOLDERS['archive']}/{note.path}")
         self.storage.move(note.path, dst)
         self._cache.pop(note.path, None)
+        if self._listing is not None:
+            self._listing.pop(note.path, None)
         note.path = dst
         note.meta["status"] = "archived"
         return self.save(note)

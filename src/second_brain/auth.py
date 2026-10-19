@@ -73,6 +73,8 @@ def build_auth_provider(settings: Settings):
         required_scopes=["openid", "email"],
         jwt_signing_key=settings.jwt_signing_key.get_secret_value(),
         client_storage=build_client_storage(settings),
+        # Without this, every MCP request makes two calls to Google before it runs.
+        cache_ttl_seconds=settings.token_cache_ttl_seconds or None,
         # Claude.ai and Claude Code callback URLs; loopback ports for local clients.
         # ChatGPT callback patterns can be opted in with SB_EXTRA_REDIRECT_URIS.
         allowed_client_redirect_uris=[
