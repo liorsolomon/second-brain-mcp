@@ -10,7 +10,7 @@ requires-python = ">=3.12"
 license = "MIT"
 keywords = ["mcp", "obsidian", "second-brain", "claude", "personal-crm"]
 dependencies = [
-    "boto3>=1.43.114",
+    "boto3>=1.43.117",
     "fastmcp>=4.1.0",
     "psycopg[binary]>=3.2",
     "pydantic-settings>=2.16.0",
