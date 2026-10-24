@@ -13,7 +13,7 @@ dependencies = [
     "boto3>=1.43.114",
     "fastmcp>=4.1.0",
     "psycopg[binary]>=3.2",
-    "pydantic-settings>=2.16.0",
+    "pydantic-settings>=2.16.1",
     "python-frontmatter>=1.3.0",
 ]
 
